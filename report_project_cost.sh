@@ -25,7 +25,7 @@ if $DETAIL; then
   QUERY="
 SELECT
     o.name                                        AS \"조직명\",
-    COALESCE(p.name, '(프로젝트 없음)')            AS \"프로젝트명\",
+    COALESCE(p.name, '프로젝트 공통')            AS \"프로젝트명\",
     COUNT(*)                                      AS \"이벤트 수\",
     SUM(ce.input_tokens)                          AS \"Input 토큰\",
     SUM(ce.output_tokens)                         AS \"Output 토큰\",
@@ -45,7 +45,7 @@ ORDER BY o.name ASC, SUM(ce.cost_cents) DESC;
 SELECT
     DATE(ce.created AT TIME ZONE 'Asia/Seoul') AS \"날짜\",
     o.name                                        AS \"조직명\",
-    COALESCE(p.name, '(프로젝트 없음)')            AS \"프로젝트명\",
+    COALESCE(p.name, '프로젝트 공통')            AS \"프로젝트명\",
     COUNT(*)                                      AS \"이벤트 수\",
     SUM(ce.input_tokens)                          AS \"Input 토큰\",
     SUM(ce.output_tokens)                         AS \"Output 토큰\",
@@ -65,7 +65,7 @@ else
   QUERY="
 SELECT
     o.name                                        AS \"조직명\",
-    COALESCE(p.name, '(프로젝트 없음)')            AS \"프로젝트명\",
+    COALESCE(p.name, '프로젝트 공통')            AS \"프로젝트명\",
     COUNT(*)                                      AS \"이벤트 수\",
     ROUND(SUM(ce.cost_cents) / 100.0, 4)          AS \"비용(USD)\"
 FROM cost_events ce
