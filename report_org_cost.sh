@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # 조직별 이달 LLM 비용 집계 리포트
-# 사용법: DB_URL=... ./report_org_cost.sh [--detail|-d] [--webhook|-w WEBHOOK_URL]
+# 사용법: DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=... ./report_org_cost.sh [--detail|-d] [--webhook|-w WEBHOOK_URL]
 #         WEBHOOK_URL 환경변수로도 지정 가능
 
-DB_URL="${DB_URL:-postgresql://localhost:5432/postgres}"
+DB_HOST="${DB_HOST:-localhost}"
+DB_PORT="${DB_PORT:-5432}"
+DB_USER="${DB_USER:-postgres}"
+DB_PASSWORD="${DB_PASSWORD:-}"
+DB_NAME="${DB_NAME:-postgres}"
 WEBHOOK_URL="${WEBHOOK_URL:-}"
+
+DB_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 DETAIL=false
 
 while [[ $# -gt 0 ]]; do

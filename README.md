@@ -45,7 +45,11 @@ chmod +x report_org_cost.sh report_project_cost.sh
 
 | 변수 | 필수 | 설명 | 기본값 |
 |------|------|------|--------|
-| `DB_URL` | ✓ | PostgreSQL 접속 URL | `postgresql://localhost:5432/postgres` |
+| `DB_HOST` | ✓ | PostgreSQL 호스트 | `localhost` |
+| `DB_PORT` | 선택 | PostgreSQL 포트 | `5432` |
+| `DB_USER` | ✓ | PostgreSQL 사용자 | `postgres` |
+| `DB_PASSWORD` | ✓ | PostgreSQL 비밀번호 | - |
+| `DB_NAME` | ✓ | 데이터베이스 이름 | `postgres` |
 | `WEBHOOK_URL` | 선택 | Google Chat Incoming Webhook URL | - |
 
 ---
@@ -56,35 +60,37 @@ chmod +x report_org_cost.sh report_project_cost.sh
 
 ```bash
 # 기본 (조직명 / 이벤트 수 / 비용(USD))
-DB_URL=postgresql://user:pass@host:5432/dbname ./report_org_cost.sh
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname ./report_org_cost.sh
 
 # 상세 (토큰 내역 + 비용(cents) 포함)
-DB_URL=... ./report_org_cost.sh --detail
-DB_URL=... ./report_org_cost.sh -d
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname ./report_org_cost.sh --detail
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname ./report_org_cost.sh -d
 ```
 
 ### 프로젝트별 비용 집계
 
 ```bash
 # 기본 (조직명 / 프로젝트명 / 이벤트 수 / 비용(USD))
-DB_URL=postgresql://user:pass@host:5432/dbname ./report_project_cost.sh
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname ./report_project_cost.sh
 
 # 상세
-DB_URL=... ./report_project_cost.sh --detail
-DB_URL=... ./report_project_cost.sh -d
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname ./report_project_cost.sh --detail
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname ./report_project_cost.sh -d
 ```
 
 ### Google Chat 웹훅 전송
 
 ```bash
 # --webhook 플래그로 전달
-DB_URL=... ./report_org_cost.sh --webhook "https://chat.googleapis.com/v1/spaces/.../messages?key=..."
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname \
+  ./report_org_cost.sh --webhook "https://chat.googleapis.com/v1/spaces/.../messages?key=..."
 
 # 단축 플래그
-DB_URL=... ./report_project_cost.sh -d -w "https://chat.googleapis.com/..."
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname \
+  ./report_project_cost.sh -d -w "https://chat.googleapis.com/..."
 
 # 환경변수로 전달 (cron 등)
-DB_URL=... WEBHOOK_URL=... ./report_org_cost.sh
+DB_HOST=host DB_USER=user DB_PASSWORD=pass DB_NAME=dbname WEBHOOK_URL=... ./report_org_cost.sh
 ```
 
 ### 출력 컬럼
