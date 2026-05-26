@@ -41,6 +41,26 @@ WHERE ce.created >= DATE_TRUNC('month', CURRENT_DATE)
 GROUP BY o.id, o.name, p.id, p.name
 ORDER BY o.name ASC, SUM(ce.cost_cents) DESC;
 "
+  QUERY_DAILY="
+SELECT
+    DATE(ce.created AT TIME ZONE 'Asia/Seoul') AS \"날짜\",
+    o.name                                        AS \"조직명\",
+    COALESCE(p.name, '(프로젝트 없음)')            AS \"프로젝트명\",
+    COUNT(*)                                      AS \"이벤트 수\",
+    SUM(ce.input_tokens)                          AS \"Input 토큰\",
+    SUM(ce.output_tokens)                         AS \"Output 토큰\",
+    SUM(ce.cache_write_tokens)                    AS \"Cache Write\",
+    SUM(ce.cache_read_tokens)                     AS \"Cache Read\",
+    SUM(ce.cost_cents)                            AS \"비용(cents)\",
+    ROUND(SUM(ce.cost_cents) / 100.0, 4)          AS \"비용(USD)\"
+FROM cost_events ce
+JOIN organizations o ON ce.organization_id = o.id
+LEFT JOIN projects p ON ce.project_id = p.id
+WHERE ce.created >= DATE_TRUNC('month', CURRENT_DATE)
+  AND ce.created <  CURRENT_TIMESTAMP + INTERVAL '1 second'
+GROUP BY DATE(ce.created AT TIME ZONE 'Asia/Seoul'), o.id, o.name, p.id, p.name
+ORDER BY DATE(ce.created AT TIME ZONE 'Asia/Seoul') ASC, o.name ASC, SUM(ce.cost_cents) DESC;
+"
 else
   QUERY="
 SELECT
@@ -58,20 +78,37 @@ ORDER BY o.name ASC, SUM(ce.cost_cents) DESC;
 "
 fi
 
-TITLE="=== 프로젝트별 이달 비용 집계 ($(date '+%Y-%m-01') ~ $(date '+%Y-%m-%d'))${DETAIL:+ [상세]} ==="
+PERIOD="$(date '+%Y-%m-01') ~ $(date '+%Y-%m-%d')"
+TITLE="=== 프로젝트별 이달 비용 집계 ($PERIOD)${DETAIL:+ [상세]} ==="
+TITLE_DAILY="=== 프로젝트별 날짜별 비용 집계 ($PERIOD) ==="
 
-RESULT=$(psql "$DB_URL" \
-  --pset=border=2 \
-  --pset=format=aligned \
-  --pset=footer=off \
-  -c "$QUERY")
+run_psql() {
+  psql "$DB_URL" --pset=border=2 --pset=format=aligned --pset=footer=off -c "$1"
+}
+
+RESULT=$(run_psql "$QUERY")
 
 echo "$TITLE"
 echo ""
 echo "$RESULT"
 
+if $DETAIL; then
+  RESULT_DAILY=$(run_psql "$QUERY_DAILY")
+  echo ""
+  echo "$TITLE_DAILY"
+  echo ""
+  echo "$RESULT_DAILY"
+fi
+
 if [[ -n "$WEBHOOK_URL" ]]; then
-  PAYLOAD=$(printf '%s\n\n```\n%s\n```' "$TITLE" "$RESULT" \
+  if $DETAIL; then
+    FULL_OUTPUT=$(printf '%s\n\n```\n%s\n```\n\n%s\n\n```\n%s\n```' \
+      "$TITLE" "$RESULT" "$TITLE_DAILY" "$RESULT_DAILY")
+  else
+    FULL_OUTPUT=$(printf '%s\n\n```\n%s\n```' "$TITLE" "$RESULT")
+  fi
+
+  PAYLOAD=$(printf '%s' "$FULL_OUTPUT" \
     | python3 -c 'import json,sys; print(json.dumps({"text": sys.stdin.read()}))')
   HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST "$WEBHOOK_URL" \
