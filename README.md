@@ -208,14 +208,199 @@ STORAGE_ENDPOINT=http://minio.internal:9000 \
 
 ---
 
+---
+
+## REST API 서버
+
+### 개요
+
+`api_server.py` 는 `generate_cost_report_md.py` 의 리포트 생성 로직을 HTTP 엔드포인트로 노출하는 **FastAPI** 서버입니다.
+사용자가 HTTP 요청 한 번으로 리포트를 생성하고 Presigned 다운로드 URL 을 받을 수 있습니다.
+
+### 추가 의존성
+
+```bash
+pip install -r requirements.txt
+# fastapi, uvicorn[standard], boto3
+```
+
+> **주의**: `generate_cost_report_md.sh` 가 `aws` CLI 를 사용하는 것과 달리,  
+> API 서버는 **boto3** 를 통해 S3/MinIO 에 직접 접근합니다.  
+> `aws` CLI 설치 없이도 동작합니다.
+
+### 로컬 실행
+
+```bash
+# 1. 환경변수 설정
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_USER=postgres
+export DB_PASSWORD=secret
+export DB_NAME=mydb
+
+export STORAGE_BUCKET=my-reports-bucket
+export AWS_REGION=ap-northeast-2
+# MinIO 사용 시:
+# export STORAGE_ENDPOINT=http://minio.internal:9000
+
+# 2. 서버 기동
+uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
+
+# 또는 직접 실행
+python3 api_server.py
+```
+
+서버 기동 후 `http://localhost:8000/docs` 에서 Swagger UI 를 확인할 수 있습니다.
+
+---
+
+### API 명세
+
+#### `POST /api/reports/generate` — 리포트 생성
+
+**요청**
+
+```http
+POST /api/reports/generate
+Content-Type: application/json
+
+{
+  "project_id": "proj-001",  // 필수(nullable). null 이면 전체 프로젝트
+  "month": "2026-05"         // 선택. 미입력 시 이번 달 (YYYY-MM)
+}
+```
+
+**응답 — 특정 프로젝트 (`project_id` 지정 시, HTTP 200)**
+
+```json
+{
+  "report_url":    "https://my-bucket.s3.ap-northeast-2.amazonaws.com/reports/proj-001/2026-05/cost_report.md?...",
+  "file_path":     "reports/proj-001/2026-05/cost_report.md",
+  "generated_at":  "2026-05-27T09:00:00Z",
+  "expires_at":    "2026-06-03T09:00:00Z"
+}
+```
+
+**응답 — 전체 프로젝트 (`project_id: null`, HTTP 207)**
+
+```json
+{
+  "summary": {
+    "report_url":   "https://...",
+    "file_path":    "reports/summary/2026-05/cost_report.md",
+    "generated_at": "2026-05-27T09:00:00Z",
+    "expires_at":   "2026-06-03T09:00:00Z"
+  },
+  "projects": [
+    {
+      "report_url":   "https://...",
+      "file_path":    "reports/proj-001/2026-05/cost_report.md",
+      "generated_at": "2026-05-27T09:00:00Z",
+      "expires_at":   "2026-06-03T09:00:00Z"
+    }
+  ]
+}
+```
+
+**오류 코드**
+
+| 코드 | 원인 |
+|------|------|
+| `404` | `project_id` 에 해당하는 비용 데이터 없음 |
+| `422` | `month` 형식 오류 (YYYY-MM 이 아닌 경우) |
+| `502` | S3/MinIO 업로드 또는 Presigned URL 생성 실패 |
+| `503` | DB 연결 실패 또는 쿼리 타임아웃 (60초) |
+
+---
+
+#### `GET /api/reports` — 기존 리포트 다운로드 링크 재발급
+
+이미 생성된 리포트가 스토리지에 존재하는 경우 Presigned URL 을 새로 발급합니다.
+
+**요청**
+
+```http
+GET /api/reports?project_id=proj-001&month=2026-05
+```
+
+| 파라미터 | 필수 | 설명 |
+|----------|------|------|
+| `project_id` | 선택 | 프로젝트 ID. 미입력 시 전체 요약(`summary`) 대상 |
+| `month` | 선택 | 대상 연월 (YYYY-MM). 미입력 시 이번 달 |
+
+**응답 (HTTP 200)**
+
+```json
+{
+  "report_url":   "https://...",
+  "file_path":    "reports/proj-001/2026-05/cost_report.md",
+  "generated_at": "2026-05-27T12:00:00Z",
+  "expires_at":   "2026-06-03T12:00:00Z"
+}
+```
+
+**오류 코드**
+
+| 코드 | 원인 |
+|------|------|
+| `404` | 스토리지에 해당 리포트 파일이 없음 |
+| `422` | `month` 형식 오류 |
+| `502` | 스토리지 조회 또는 Presigned URL 생성 실패 |
+
+---
+
+#### `GET /health` — 헬스체크
+
+```http
+GET /health
+→ {"status": "ok", "service": "cost-report-api"}
+```
+
+---
+
+### S3 파일 경로 규칙
+
+| 대상 | S3 Key |
+|------|--------|
+| 프로젝트별 리포트 | `reports/{project_id}/{YYYY-MM}/cost_report.md` |
+| 전체 요약 리포트 | `reports/summary/{YYYY-MM}/cost_report.md` |
+
+---
+
+### cURL 예시
+
+```bash
+BASE=http://localhost:8000
+
+# 1. 특정 프로젝트 리포트 생성
+curl -s -X POST "$BASE/api/reports/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"project_id":"proj-001","month":"2026-05"}' | jq .
+
+# 2. 전체 프로젝트 리포트 생성 (project_id=null)
+curl -s -X POST "$BASE/api/reports/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"project_id":null,"month":"2026-05"}' | jq .
+
+# 3. 이미 생성된 리포트 링크 재발급
+curl -s "$BASE/api/reports?project_id=proj-001&month=2026-05" | jq .
+
+# 4. 전체 요약 리포트 링크 재발급
+curl -s "$BASE/api/reports?month=2026-05" | jq .
+```
+
+---
+
 ## 프로젝트 구조
 
 ```
 scratch-report/
+├── api_server.py                  # ★ REST API 서버 (FastAPI)
+├── requirements.txt               # API 서버 Python 의존성
 ├── report_org_cost.sh             # 조직별 비용 집계 스크립트 (터미널 출력 / Webhook)
 ├── report_project_cost.sh         # 프로젝트별 비용 집계 스크립트 (터미널 출력 / Webhook)
 ├── generate_cost_report_md.sh     # MD 리포트 생성 + 스토리지 업로드 (Bash 래퍼)
-├── generate_cost_report_md.py     # MD 리포트 생성 구현체 (Python)
+├── generate_cost_report_md.py     # MD 리포트 생성 구현체 (Python, API 서버가 내부 모듈로 재사용)
 ├── sql/
 │   ├── cost_report_project.sql    # 프로젝트별 이달 집계 쿼리 (참조용)
 │   ├── cost_report_prev_month.sql # 전월 집계 쿼리 (참조용)
