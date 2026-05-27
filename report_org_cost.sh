@@ -24,50 +24,73 @@ done
 if $DETAIL; then
   QUERY="
 SELECT
-    o.name                                        AS \"조직명\",
-    COUNT(*)                                      AS \"이벤트 수\",
-    SUM(ce.input_tokens)                          AS \"Input 토큰\",
-    SUM(ce.output_tokens)                         AS \"Output 토큰\",
-    SUM(ce.cache_write_tokens)                    AS \"Cache Write\",
-    SUM(ce.cache_read_tokens)                     AS \"Cache Read\",
-    SUM(ce.cost_cents)                            AS \"비용(cents)\",
-    ROUND(SUM(ce.cost_cents) / 100.0, 4)          AS \"비용(USD)\"
+    o.name                                                        AS \"조직명\",
+    COUNT(*)                                                      AS \"이벤트 수\",
+    SUM(ce.input_tokens)                                          AS \"Input 토큰\",
+    SUM(ce.output_tokens)                                         AS \"Output 토큰\",
+    SUM(ce.cache_write_tokens)                                    AS \"Cache Write\",
+    SUM(ce.cache_read_tokens)                                     AS \"Cache Read\",
+    SUM(ce.cost_cents)                                            AS \"비용(cents)\",
+    ROUND(SUM(ce.cost_cents) / 100.0, 4)                          AS \"비용(USD)\",
+    ROUND(bp.monthly_limit_cents / 100.0, 4)                      AS \"한도(USD)\",
+    CASE WHEN bp.monthly_limit_cents > 0
+         THEN ROUND(SUM(ce.cost_cents) * 100.0 / bp.monthly_limit_cents, 2)
+         ELSE NULL END                                            AS \"사용율(%)\"
 FROM cost_events ce
 JOIN organizations o ON ce.organization_id = o.id
+LEFT JOIN budget_policies bp ON ce.organization_id = bp.organization_id
 WHERE ce.created >= DATE_TRUNC('month', CURRENT_DATE)
   AND ce.created <  CURRENT_TIMESTAMP + INTERVAL '1 second'
-GROUP BY o.id, o.name
+GROUP BY o.id, o.name, bp.monthly_limit_cents
 ORDER BY SUM(ce.cost_cents) DESC;
 "
   QUERY_DAILY="
 SELECT
-    DATE(ce.created AT TIME ZONE 'Asia/Seoul') AS \"날짜\",
-    o.name                                        AS \"조직명\",
-    COUNT(*)                                      AS \"이벤트 수\",
-    SUM(ce.input_tokens)                          AS \"Input 토큰\",
-    SUM(ce.output_tokens)                         AS \"Output 토큰\",
-    SUM(ce.cache_write_tokens)                    AS \"Cache Write\",
-    SUM(ce.cache_read_tokens)                     AS \"Cache Read\",
-    SUM(ce.cost_cents)                            AS \"비용(cents)\",
-    ROUND(SUM(ce.cost_cents) / 100.0, 4)          AS \"비용(USD)\"
+    DATE(ce.created AT TIME ZONE 'Asia/Seoul')                    AS \"날짜\",
+    o.name                                                        AS \"조직명\",
+    COUNT(*)                                                      AS \"이벤트 수\",
+    SUM(ce.input_tokens)                                          AS \"Input 토큰\",
+    SUM(ce.output_tokens)                                         AS \"Output 토큰\",
+    SUM(ce.cache_write_tokens)                                    AS \"Cache Write\",
+    SUM(ce.cache_read_tokens)                                     AS \"Cache Read\",
+    SUM(ce.cost_cents)                                            AS \"일별 비용(cents)\",
+    ROUND(SUM(ce.cost_cents) / 100.0, 4)                          AS \"일별 비용(USD)\",
+    SUM(SUM(ce.cost_cents)) OVER (
+        PARTITION BY o.id
+        ORDER BY DATE(ce.created AT TIME ZONE 'Asia/Seoul')
+    )                                                             AS \"누적 비용(cents)\",
+    ROUND(bp.monthly_limit_cents / 100.0, 4)                      AS \"한도(USD)\",
+    CASE WHEN bp.monthly_limit_cents > 0
+         THEN ROUND(
+             SUM(SUM(ce.cost_cents)) OVER (
+                 PARTITION BY o.id
+                 ORDER BY DATE(ce.created AT TIME ZONE 'Asia/Seoul')
+             ) * 100.0 / bp.monthly_limit_cents, 2)
+         ELSE NULL END                                            AS \"누적 사용율(%)\"
 FROM cost_events ce
 JOIN organizations o ON ce.organization_id = o.id
+LEFT JOIN budget_policies bp ON ce.organization_id = bp.organization_id
 WHERE ce.created >= DATE_TRUNC('month', CURRENT_DATE)
   AND ce.created <  CURRENT_TIMESTAMP + INTERVAL '1 second'
-GROUP BY DATE(ce.created AT TIME ZONE 'Asia/Seoul'), o.id, o.name
+GROUP BY DATE(ce.created AT TIME ZONE 'Asia/Seoul'), o.id, o.name, bp.monthly_limit_cents
 ORDER BY DATE(ce.created AT TIME ZONE 'Asia/Seoul') ASC, SUM(ce.cost_cents) DESC;
 "
 else
   QUERY="
 SELECT
-    o.name                                        AS \"조직명\",
-    COUNT(*)                                      AS \"이벤트 수\",
-    ROUND(SUM(ce.cost_cents) / 100.0, 4)          AS \"비용(USD)\"
+    o.name                                                        AS \"조직명\",
+    COUNT(*)                                                      AS \"이벤트 수\",
+    ROUND(SUM(ce.cost_cents) / 100.0, 4)                          AS \"비용(USD)\",
+    ROUND(bp.monthly_limit_cents / 100.0, 4)                      AS \"한도(USD)\",
+    CASE WHEN bp.monthly_limit_cents > 0
+         THEN ROUND(SUM(ce.cost_cents) * 100.0 / bp.monthly_limit_cents, 2)
+         ELSE NULL END                                            AS \"사용율(%)\"
 FROM cost_events ce
 JOIN organizations o ON ce.organization_id = o.id
+LEFT JOIN budget_policies bp ON ce.organization_id = bp.organization_id
 WHERE ce.created >= DATE_TRUNC('month', CURRENT_DATE)
   AND ce.created <  CURRENT_TIMESTAMP + INTERVAL '1 second'
-GROUP BY o.id, o.name
+GROUP BY o.id, o.name, bp.monthly_limit_cents
 ORDER BY SUM(ce.cost_cents) DESC;
 "
 fi
