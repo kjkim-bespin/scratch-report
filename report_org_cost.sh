@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 조직별 이달 LLM 비용 집계 리포트
-# 사용법: DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=... ./report_org_cost.sh [--detail|-d] [--webhook|-w WEBHOOK_URL]
+# 사용법: DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=... ./report_org_cost.sh [--detail|-d] [--webhook|-w WEBHOOK_URL] [--output|-o OUTPUT_DIR]
 #         WEBHOOK_URL 환경변수로도 지정 가능
 
 DB_HOST="${DB_HOST:-localhost}"
@@ -12,11 +12,13 @@ WEBHOOK_URL="${WEBHOOK_URL:-}"
 
 DB_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 DETAIL=false
+OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --detail|-d) DETAIL=true; shift ;;
     --webhook|-w) WEBHOOK_URL="$2"; shift 2 ;;
+    --output|-o) OUTPUT_DIR="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -115,6 +117,26 @@ if $DETAIL; then
   echo "$TITLE_DAILY"
   echo ""
   echo "$RESULT_DAILY"
+fi
+
+# 파일 저장
+if [[ -n "$OUTPUT_DIR" ]]; then
+  mkdir -p "$OUTPUT_DIR"
+  TIMESTAMP="$(date '+%Y%m%d_%H%M')"
+  OUTPUT_FILE="${OUTPUT_DIR}/report_org_cost-${TIMESTAMP}.txt"
+  {
+    echo "$TITLE"
+    echo ""
+    echo "$RESULT"
+    if $DETAIL; then
+      echo ""
+      echo "$TITLE_DAILY"
+      echo ""
+      echo "$RESULT_DAILY"
+    fi
+  } > "$OUTPUT_FILE"
+  echo ""
+  echo "[output] 리포트 저장 완료: $OUTPUT_FILE"
 fi
 
 if [[ -n "$WEBHOOK_URL" ]]; then
